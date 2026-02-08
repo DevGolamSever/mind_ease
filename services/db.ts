@@ -2,6 +2,7 @@ import { User, Message, MoodEntry } from '../types';
 
 // Simple LocalStorage Database
 // This saves all data directly in the user's browser.
+const API_BASE = "http://localhost:5000/api";
 
 const STORAGE_KEYS = {
   USERS: 'mind_ease_users',
@@ -15,32 +16,46 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const db = {
   // --- Auth ---
-  async signUp(email: string, password: string, name: string) {
-    await delay(500); // Simulate processing
-    const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
-    
-    if (users.find((u: any) => u.email === email)) {
-      throw new Error('User already exists');
+ async signUp(email: string, password: string, name: string) {
+    // 1. Save to Database
+    const response = await fetch(`${API_BASE}/users/register`, { // Adjust route as per your backend
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, name }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Signup failed');
     }
 
-    const newUser = { id: crypto.randomUUID(), email, password, name };
+    const newUser = await response.json(); // This now has the MongoDB _id
+
+    // 2. Save to Local Storage for persistence
+    const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
     users.push(newUser);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
     
     return newUser;
   },
 
-  async signIn(email: string, password: string) {
-    await delay(500);
-    const users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
-    const user = users.find((u: any) => u.email === email && u.password === password);
+async signIn(email: string, password: string) {
+    // 1. Verify with Database
+    const response = await fetch(`${API_BASE}/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
 
-    if (!user) {
+    if (!response.ok) {
       throw new Error('Invalid email or password');
     }
 
-    // Create session
-    const sessionUser = { id: user.id, email: user.email, name: user.name };
+    const { user } = await response.json();
+
+    // 2. Create session in Local Storage
+    // Ensure we use user._id from MongoDB here
+    const sessionUser = { id: user._id, email: user.email, name: user.name };
     localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(sessionUser));
     
     return { user: sessionUser };
@@ -93,31 +108,73 @@ export const db = {
   },
 
   // --- Moods ---
-  async getMoods(): Promise<MoodEntry[]> {
-    const user = await this.getCurrentUser();
-    if (!user) return [];
+async getMoods(): Promise<MoodEntry[]> {
+  const user = await this.getCurrentUser();
+  if (!user) return [];
 
-    const allMoods = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOODS) || '{}');
-    return allMoods[user.id] || [];
-  },
+  const userId = user.id;
 
-  async addMood(score: number, note: string) {
-    const user = await this.getCurrentUser();
-    if (!user) throw new Error("No user logged in");
-
-    const allMoods = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOODS) || '{}');
-    if (!allMoods[user.id]) allMoods[user.id] = [];
-
-    const newMood = {
-      id: crypto.randomUUID(),
-      timestamp: Date.now(),
-      score,
-      note
-    };
-
-    allMoods[user.id].push(newMood);
-    localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(allMoods));
+  try {
+    // 1. Try to fetch fresh data from the DB
+    const response = await fetch(`http://localhost:5000/api/users/${userId}/notes`);
     
-    return newMood;
+    if (response.ok) {
+      const dbMoods = await response.json();
+
+      // 2. Sync the fresh DB data back to Local Storage
+      const allMoods = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOODS) || '{}');
+      allMoods[userId] = dbMoods;
+      localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(allMoods));
+
+      return dbMoods;
+    }
+  } catch (error) {
+    console.warn("Could not fetch from DB, falling back to local storage:", error);
   }
+
+  // 3. Fallback: Return what we have in Local Storage if DB fails
+  const localData = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOODS) || '{}');
+  return localData[userId] || [];
+},
+
+async addMood(score: number, note: string) {
+  const user = await this.getCurrentUser();
+  if (!user) throw new Error("No user logged in");
+
+  // Use the ID coming from your database, not a crypto.randomUUID()
+  const userId =  user.id; 
+
+  const newMood = {
+    // Let the Database generate the ID for the note itself
+    timestamp: Date.now(),
+    score,
+    note
+  };
+
+  try {
+    const response = await fetch(`http://localhost:5000/api/users/${userId}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newMood),
+    });
+
+    if (!response.ok) {
+       const err = await response.json();
+       throw new Error(err.error || 'Failed to save');
+    }
+
+    const savedMood = await response.json();
+
+    // Update Local Storage
+    const allMoods = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOODS) || '{}');
+    if (!allMoods[userId]) allMoods[userId] = [];
+    allMoods[userId].push(savedMood);
+    localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(allMoods));
+
+    return savedMood;
+  } catch (error) {
+    console.error("Sync Error:", error);
+    throw error;
+  }
+}
 };
