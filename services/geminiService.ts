@@ -9,7 +9,7 @@ let chatInstance: Chat | null = null;
 
 const getAI = () => {
   if (!ai) {
-    const key = 'AIzaSyCSK8AljSt33YfHgauw5Lvj9Vp3nsI46po'
+    const key = 'AIzaSyC-p9b-ufquZvHi-jZxZIEfuvORz01tpAs'
     // Initialize even if key is missing to allow app to load, but calls will fail gracefully
     ai = new GoogleGenAI({ apiKey: key || 'missing-key' });
   }
@@ -59,7 +59,7 @@ export const getChatInstance = (): Chat | null => {
 
 // Stream responses for a "live" feel
 export async function* sendMessageStream(message: string, tone: string = 'Empathetic') {
-  const apiKey = "AIzaSyCSK8AljSt33YfHgauw5Lvj9Vp3nsI46po";
+  const apiKey = "AIzaSyC-p9b-ufquZvHi-jZxZIEfuvORz01tpAs";
   if (!apiKey) {
       yield { text: "Configuration Error: The API Key is missing. Please check your configuration." };
       return;
