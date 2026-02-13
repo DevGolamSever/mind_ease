@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, User as UserIcon, Bot, ExternalLink, SlidersHorizontal, Check, Timer, Heart, Coffee, Briefcase, Zap, Mic, MicOff, Trash2, AlertCircle, X, Download } from 'lucide-react';
+import { Send, User as UserIcon, Bot, ExternalLink, SlidersHorizontal, Check, Timer, Heart, Coffee, Briefcase, Zap, Mic, MicOff, Trash2, AlertCircle, X, Download, History } from 'lucide-react';
 import { Message, User } from '../types';
 import { sendMessageStream, resetChat, initializeChat } from '../services/geminiService';
 import { db } from '../services/db';
@@ -14,7 +14,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onOpenTimer 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
-  
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+const [historyMessages, setHistoryMessages] = useState<Message[]>([]);
   // Voice Input State
   const [isListening, setIsListening] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -118,6 +119,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onOpenTimer 
       }
     }
   };
+
+const handleChatHistory = async () => {
+  try {
+    const response = await fetch(`http://localhost:5001/api/users/${user.id}/messages`);
+    if (!response.ok) throw new Error("Failed to fetch messages");
+
+    const history: Message[] = await response.json();
+
+    // Convert timestamps from string to Date objects
+    const parsedHistory = history.map(msg => ({
+      ...msg,
+      timestamp: new Date(msg.timestamp),
+    }));
+
+    setHistoryMessages(parsedHistory);
+    setShowHistoryModal(true);
+  } catch (error) {
+    console.error("Failed to load chat history", error);
+  }
+};
+
 
   const handleDownloadChat = () => {
     const content = messages
@@ -247,6 +269,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onOpenTimer 
     // Save user message to DB
     db.addMessage(userMsg);
 
+     // ✅ NEW: Save to MongoDB in background (non-blocking)
+  fetch(`http://localhost:5001/api/users/${user.id}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(userMsg)
+  }).catch(err => console.error("Mongo save failed:", err));
+
     const botMsgId = crypto.randomUUID();
     const initialBotMsg: Message = {
       id: botMsgId,
@@ -276,11 +305,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onOpenTimer 
       }
 
       // Save complete bot message to DB
-      db.addMessage({
-          ...initialBotMsg,
-          text: accumulatedText,
-          groundingChunks: finalGrounding
-      });
+  
+
+         const finalBotMessage = {
+      ...initialBotMsg,
+      text: accumulatedText,
+      groundingChunks: finalGrounding
+    };
+    db.addMessage(finalBotMessage);
+
+      fetch(`http://localhost:5001/api/users/${user.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(finalBotMessage)
+    }).catch(err => console.error("Mongo save failed:", err));
 
     } catch (error) {
       console.error("Chat error:", error);
@@ -311,6 +349,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onOpenTimer 
         <div className="flex items-center gap-2">
             <button onClick={handleDownloadChat} className="p-2 rounded-full hover:bg-slate-50 text-slate-500 hover:text-teal-600 transition-colors" title="Download Chat History">
               <Download size={20} />
+            </button>
+            <button onClick={handleChatHistory} className="p-2 rounded-full hover:bg-slate-50 text-slate-500 hover:text-teal-600 transition-colors" title="Download Chat History">
+              <History size={20} />
             </button>
             <button onClick={handleClearChat} className="p-2 rounded-full hover:bg-slate-50 text-slate-500 hover:text-red-600 transition-colors" title="Clear Chat History">
               <Trash2 size={20} />
@@ -481,6 +522,50 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onOpenTimer 
           <span>Not a substitute for professional care.</span>
         </p>
       </div>
+{showHistoryModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+    <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[80vh] overflow-y-auto p-6 relative">
+      
+      <button 
+        className="absolute top-4 right-4 text-slate-400 hover:text-red-600"
+        onClick={() => setShowHistoryModal(false)}
+      >
+        <X size={20} />
+      </button>
+
+      <h3 className="text-lg font-bold mb-4">Chat History</h3>
+
+      {historyMessages.length === 0 ? (
+        <p className="text-sm text-slate-500">No messages found.</p>
+      ) : (
+        <div className="space-y-4">
+          {historyMessages.map(msg => (
+            <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                msg.role === 'model' ? 'bg-teal-100 text-teal-600' : 'bg-indigo-100 text-indigo-600'
+              }`}>
+                {msg.role === 'model' ? <Bot size={20} /> : <UserIcon size={20} />}
+              </div>
+
+              <div className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                <div className={`px-4 py-2 rounded-xl text-sm ${
+                  msg.role === 'user' ? 'bg-teal-600 text-white rounded-tr-none' : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
+                }`}>
+                  {msg.text}
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1">
+                  {msg.timestamp.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+
     </div>
   );
 };

@@ -9,7 +9,7 @@ let chatInstance: Chat | null = null;
 
 const getAI = () => {
   if (!ai) {
-    const key = 'AIzaSyC-p9b-ufquZvHi-jZxZIEfuvORz01tpAs'
+    const key ='AIzaSyDy9bX78CeFjr_JYzc9nPZQ-WG8cvMHdAI'
     // Initialize even if key is missing to allow app to load, but calls will fail gracefully
     ai = new GoogleGenAI({ apiKey: key || 'missing-key' });
   }

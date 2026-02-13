@@ -2,7 +2,7 @@ import { User, Message, MoodEntry } from '../types';
 
 // Simple LocalStorage Database
 // This saves all data directly in the user's browser.
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "http://localhost:5001/api";
 
 const STORAGE_KEYS = {
   USERS: 'mind_ease_users',
@@ -116,7 +116,7 @@ async getMoods(): Promise<MoodEntry[]> {
 
   try {
     // 1. Try to fetch fresh data from the DB
-    const response = await fetch(`http://localhost:5000/api/users/${userId}/notes`);
+    const response = await fetch(`${API_BASE}/users/${userId}/notes`);
     
     if (response.ok) {
       const dbMoods = await response.json();
@@ -152,7 +152,7 @@ async addMood(score: number, note: string) {
   };
 
   try {
-    const response = await fetch(`http://localhost:5000/api/users/${userId}/notes`, {
+    const response = await fetch(`${API_BASE}/users/${userId}/notes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newMood),
@@ -176,5 +176,39 @@ async addMood(score: number, note: string) {
     console.error("Sync Error:", error);
     throw error;
   }
+},
+async deleteMood(noteId: string) {
+  const user = await this.getCurrentUser();
+  if (!user) throw new Error("No user logged in");
+
+  const userId = user.id;
+
+  try {
+    const response = await fetch(`${API_BASE}/users/${userId}/notes/${noteId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to delete note');
+    }
+
+    const result = await response.json(); // { message: "...", notes: [...] }
+
+    // Update local storage
+    const allMoods = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOODS) || '{}');
+    if (allMoods[userId]) {
+      allMoods[userId] = allMoods[userId].filter((m: any) => m._id !== noteId);
+      localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(allMoods));
+    }
+
+    return result.notes; // return the updated notes array
+  } catch (error) {
+    console.error("Delete Mood Error:", error);
+    throw error;
+  }
 }
 };
+
+

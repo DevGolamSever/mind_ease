@@ -1,17 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { Activity, Calendar, Award, TrendingUp, PlusCircle, X, Smile, Meh, Frown } from 'lucide-react';
+import { Activity, Calendar, Award, TrendingUp, PlusCircle, X, Smile, Meh, Frown, Trash } from 'lucide-react';
 import { DailyMood, User, MoodEntry } from '../types';
 import { Button } from './Button';
 import { MoodLogger } from './MoodLogger';
+import { db } from '../services/db';
 
 interface DashboardProps {
   user: User;
   moodEntries: MoodEntry[];
   onLogMood: (score: number, note: string) => void;
+  onDeleteMood: (id: string) => void; // Add this line
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ user, moodEntries, onLogMood }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ user, moodEntries, onLogMood ,onDeleteMood}) => {
   const [isLoggerOpen, setIsLoggerOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<MoodEntry | null>(null);
 
@@ -70,6 +72,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, moodEntries, onLogMo
       }
     }
   };
+
+const handleDeletMode = async (noteId: string) => {
+  // 1. Set an alert (Confirmation)
+  const confirmDelete = window.confirm("Are you sure you want to delete this mood entry?");
+  
+  if (confirmDelete) {
+    try {
+      // 2. Call the DB service
+      await db.deleteMood(noteId);
+
+      // 3. Call the parent function to update the list in the UI
+      onDeleteMood(noteId);
+
+      // 4. Close the modal
+      setSelectedEntry(null);
+    } catch (e) {
+      console.error("Failed to delete mood entry", e);
+      alert("Something went wrong while deleting.");
+    }
+  }
+};
+
+
+  
 
   const getMoodIcon = (score: number) => {
     if (score <= 3) return <Frown size={48} className="text-red-500" />;
@@ -227,9 +253,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, moodEntries, onLogMo
                   <p className="text-sm text-slate-500 mt-1 line-clamp-2">{entry.note || "No note added."}</p>
                 </div>
               </div>
-              <span className="text-xs font-medium text-slate-400 whitespace-nowrap ml-2">
+              <span className="text-xs font-medium text-slate-400 whitespace-nowrap ml-2 ">
                 {new Date(entry.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </span>
+            
+             </span>
+              
             </div>
           ))}
         </div>
@@ -277,8 +305,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, moodEntries, onLogMo
                   </p>
                 </div>
 
-                <div className="mt-6">
+                <div className="mt-6 flex gap-2">
                    <Button fullWidth variant="outline" onClick={() => setSelectedEntry(null)}>Close</Button>
+                   <Button fullWidth variant="outline" onClick={()=>handleDeletMode(selectedEntry?._id)}>Delete Mode</Button>
                 </div>
              </div>
           </div>

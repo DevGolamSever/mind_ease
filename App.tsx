@@ -45,6 +45,11 @@ const App: React.FC = () => {
     }
   };
 
+const handleDeleteMood = (id: string) => {
+  // This filters out the deleted item and triggers a re-render
+  setMoodEntries(prev => prev.filter(entry => entry._id !== id));
+};
+
   // Passed to Auth component to trigger state update after successful login
   const handleLoginSuccess = async () => {
       await initAuth();
@@ -102,6 +107,7 @@ const App: React.FC = () => {
             user={user} 
             moodEntries={moodEntries} 
             onLogMood={handleLogMood} 
+            onDeleteMood={handleDeleteMood} // Pass it here
           />
         );
       case AppView.RESOURCES:
