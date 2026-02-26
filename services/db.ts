@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   SESSION: 'mind_ease_session',
   MESSAGES: 'mind_ease_messages',
   MOODS: 'mind_ease_moods',
+  BADGES: 'mind_ease_badges',
 };
 
 // Helper for realistic delay
@@ -137,41 +138,80 @@ async getMoods(): Promise<MoodEntry[]> {
   return localData[userId] || [];
 },
 
+// async addMood(score: number, note: string) {
+//   const user = await this.getCurrentUser();
+//   if (!user) throw new Error("No user logged in");
+
+//   // Use the ID coming from your database, not a crypto.randomUUID()
+//   const userId =  user.id; 
+
+//   const newMood = {
+//     // Let the Database generate the ID for the note itself
+//     timestamp: Date.now(),
+//     score,
+//     note
+//   };
+
+//   try {
+//     const response = await fetch(`${API_BASE}/users/${userId}/notes`, {
+//       method: 'POST',
+//       headers: { 'Content-Type': 'application/json' },
+//       body: JSON.stringify(newMood),
+//     });
+
+//     if (!response.ok) {
+//        const err = await response.json();
+//        throw new Error(err.error || 'Failed to save');
+//     }
+
+//     const savedMood = await response.json();
+
+//     // Update Local Storage
+//     const allMoods = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOODS) || '{}');
+//     if (!allMoods[userId]) allMoods[userId] = [];
+//     allMoods[userId].push(savedMood);
+//     localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(allMoods));
+
+//     return savedMood;
+//   } catch (error) {
+//     console.error("Sync Error:", error);
+//     throw error;
+//   }
+// },
+
 async addMood(score: number, note: string) {
   const user = await this.getCurrentUser();
   if (!user) throw new Error("No user logged in");
 
-  // Use the ID coming from your database, not a crypto.randomUUID()
-  const userId =  user.id; 
-
-  const newMood = {
-    // Let the Database generate the ID for the note itself
-    timestamp: Date.now(),
-    score,
-    note
-  };
+  const userId = user.id;
 
   try {
     const response = await fetch(`${API_BASE}/users/${userId}/notes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newMood),
+      body: JSON.stringify({ score, note }),
     });
 
     if (!response.ok) {
-       const err = await response.json();
-       throw new Error(err.error || 'Failed to save');
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to save');
     }
 
-    const savedMood = await response.json();
+    const result = await response.json();
+    // result = { notes, badgeCount, newBadgeEarned }
 
-    // Update Local Storage
+    // 🔄 Update moods in local storage
     const allMoods = JSON.parse(localStorage.getItem(STORAGE_KEYS.MOODS) || '{}');
-    if (!allMoods[userId]) allMoods[userId] = [];
-    allMoods[userId].push(savedMood);
+    allMoods[userId] = result.notes;
     localStorage.setItem(STORAGE_KEYS.MOODS, JSON.stringify(allMoods));
 
-    return savedMood;
+    // 🔄 Update badgeCount in local storage
+    const allBadges = JSON.parse(localStorage.getItem(STORAGE_KEYS.BADGES) || '{}');
+    allBadges[userId] = result.badgeCount;   // ✅ store number only
+    localStorage.setItem(STORAGE_KEYS.BADGES, JSON.stringify(allBadges));
+
+    return result; // contains badgeCount + newBadgeEarned
+
   } catch (error) {
     console.error("Sync Error:", error);
     throw error;
@@ -208,6 +248,44 @@ async deleteMood(noteId: string) {
     console.error("Delete Mood Error:", error);
     throw error;
   }
+},
+//getbadges here 
+async getBadges() {
+  const user = await this.getCurrentUser();
+  // Check for both .id and ._id depending on your auth helper
+  const userId = user?.id || user?._id; 
+
+  if (!userId) {
+    console.error("No user ID found");
+    return [];
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/users/${userId}/badges`);
+
+    if (response.ok) {
+      let badges = await response.json();
+
+      // IMPORTANT: If the API returns the full user object instead of just the array, 
+      // extract the badges field specifically.
+      if (badges && badges.badges) {
+        badges = badges.badges;
+      }
+
+      // Sync to local storage
+      const allBadges = JSON.parse(localStorage.getItem(STORAGE_KEYS.BADGES) || '{}');
+      allBadges[userId] = badges;
+      localStorage.setItem(STORAGE_KEYS.BADGES, JSON.stringify(allBadges));
+
+      return badges;
+    }
+  } catch (error) {
+    console.warn("Badge fetch failed, using local storage:", error);
+  }
+
+  // Fallback
+  const localData = JSON.parse(localStorage.getItem(STORAGE_KEYS.BADGES) || '{}');
+  return localData[userId] || [];
 }
 };
 

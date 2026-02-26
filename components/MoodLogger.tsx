@@ -14,13 +14,40 @@ export const MoodLogger: React.FC<MoodLoggerProps> = ({ isOpen, onClose, onSave 
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(score, note);
-    setNote(''); // Reset form
+  // const handleSubmit = (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   onSave(score, note);
+  //   setNote(''); // Reset form
+  //   setScore(7);
+  //   onClose();
+  // };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  try {
+    // Call the parent `onSave` (which now should return the result from db.addMood)
+    const result = await onSave(score, note); // result = { notes, badges, newBadgeEarned }
+
+    console.log(result,"<<<<<<<<<<<<");
+    
+    // If a new badge was earned, show alert
+    if (result?.newBadgeEarned) {
+      alert("🎉 Congrats! You earned a new badge!");
+    }
+
+    // Reset form
+    setNote('');
     setScore(7);
+
+    // Close logger
     onClose();
-  };
+
+  } catch (err) {
+    console.error(err);
+    alert("Failed to log mood");
+  }
+};
 
   const getMoodLabel = (val: number) => {
     if (val <= 3) return { label: 'Struggling', color: 'text-red-500', icon: Frown };
